@@ -1,8 +1,9 @@
 defmodule Cue do
-  @callback adapter() :: module()
-
+  @callback adapter :: module()
   @callback add_job(any(), keyword()) :: {:ok, any()} | {:error, any()}
   @callback add_jobs(any(), keyword()) :: {:ok, [any()]} | {:error, any()}
+
+  def adapter(adapter), do: adapter.adapter()
 
   def add_job(adapter, args, opts) do
     adapter.add_job(args, opts)
@@ -28,8 +29,6 @@ defmodule Cue do
       opts = unquote(opts)
 
       opts = Cue.validate_adapter_options!(opts)
-
-      alias Cue.Adapter
 
       @behaviour Cue.Adapter
 

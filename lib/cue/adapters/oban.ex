@@ -3,9 +3,7 @@ defmodule Cue.Adapters.Oban do
 
   alias Cue.Adapters.Oban
 
-  @default_name __MODULE__
-
-  def start_link(name \\ @default_name, opts \\ []) do
+  def start_link(name, opts \\ []) do
     Oban.Supervisor.start_link(name, opts)
   end
 

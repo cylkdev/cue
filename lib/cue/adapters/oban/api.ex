@@ -28,20 +28,14 @@ defmodule Cue.Adapters.Oban.API do
   """
   @spec insert(map() | Ecto.Changeset.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
   def insert(params_or_changeset, opts) do
-    instance_opts = opts[:oban] || []
-
-    opts = Keyword.delete(opts, :oban)
-
     changeset = build_changeset(params_or_changeset, opts)
 
-    case instance_opts[:instance] do
-      nil ->
-        instance_opts
-        |> Keyword.get(:name, opts[:name])
-        |> Oban.insert(changeset, opts)
-
-      instance ->
-        instance.insert(changeset, opts)
+    if Keyword.has_key?(opts, :instance) do
+      instance = Keyword.fetch!(opts, :instance)
+      instance.insert(changeset, opts)
+    else
+      name = Keyword.fetch!(opts, :name)
+      Oban.insert(name, changeset, opts)
     end
   end
 
@@ -61,25 +55,20 @@ defmodule Cue.Adapters.Oban.API do
   @spec insert_all([map() | Ecto.Changeset.t()], keyword()) ::
           {:ok, [Oban.Job.t()]} | {:error, term()}
   def insert_all(params_or_changesets, opts) do
-    instance_opts = opts[:oban] || []
+    changesets = build_changesets(params_or_changesets, opts)
 
-    opts = Keyword.delete(opts, :oban)
-
-    changesets = build_changeset(params_or_changesets, opts)
-
-    case instance_opts[:instance] do
-      nil ->
-        name = Keyword.get(instance_opts, :name, opts[:name])
-        Oban.insert_all(name, changesets, opts)
-
-      instance ->
-        instance.insert_all(changesets, opts)
+    if Keyword.has_key?(opts, :instance) do
+      instance = Keyword.fetch!(opts, :instance)
+      instance.insert_all(changesets, opts)
+    else
+      name = Keyword.fetch!(opts, :name)
+      Oban.insert_all(name, changesets, opts)
     end
   end
 
   ## Helpers
 
-  defp build_changeset([_ | _] = entries, opts) do
+  defp build_changesets([_ | _] = entries, opts) do
     Enum.map(entries, &build_changeset(&1, opts))
   end
 

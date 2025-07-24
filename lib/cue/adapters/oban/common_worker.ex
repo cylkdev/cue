@@ -37,8 +37,8 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   @doc """
   Retrieves the static Oban configuration associated with a given worker module.
   """
-  @spec __oban__(module()) :: keyword()
-  def __oban__(worker), do: worker.__oban__()
+  @spec instance_options(module()) :: keyword()
+  def instance_options(worker), do: worker.instance_options()
 
   @doc """
   Re-inserts a job using its current arguments and the configuration from the caller worker.
@@ -57,7 +57,7 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   """
   @spec insert(module(), any(), keyword()) :: insert_result()
   def insert(worker, params_or_changeset, opts \\ []) do
-    opts = with_config(opts, worker)
+    opts = with_oban_opts(opts, worker)
 
     API.insert(params_or_changeset, opts)
   end
@@ -69,17 +69,26 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   """
   @spec insert_all(module(), list(any()), keyword()) :: insert_all_result()
   def insert_all(worker, params_or_changesets, opts \\ []) do
-    opts = with_config(opts, worker)
+    opts = with_oban_opts(opts, worker)
 
     API.insert_all(params_or_changesets, opts)
   end
 
-  defp with_config(opts, worker) do
-    instance_options = __oban__(worker)
+  defp with_oban_opts(opts, worker) do
+    instance_options = instance_options(worker)
 
     opts
     |> Keyword.put(:worker, worker)
-    |> Keyword.update(:oban, instance_options, &Keyword.merge(instance_options, &1))
+    |> put_new_when_not_nil(:instance, instance_options[:instance])
+    |> put_new_when_not_nil(:name, instance_options[:name])
+  end
+
+  defp put_new_when_not_nil(opts, _key, nil) do
+    opts
+  end
+
+  defp put_new_when_not_nil(opts, key, value) do
+    Keyword.put_new(opts, key, value)
   end
 
   @adapter_definition [
@@ -156,6 +165,44 @@ defmodule Cue.Adapters.Oban.CommonWorker do
     NimbleOptions.validate!(opts, @adapter_definition)
   end
 
+  def quoted_adapter_ast(opts) do
+    quote do
+      opts = unquote(opts)
+
+      opts = Cue.Adapters.Oban.CommonWorker.validate_adapter_options!(opts)
+
+      oban_worker_options = Keyword.drop(opts, [:instance, :name])
+
+      instance_options = Keyword.take(opts, [:instance, :name])
+
+      alias Cue.Adapters.Oban.CommonWorker
+
+      use Oban.Worker, oban_worker_options
+
+      @behaviour Cue.Adapters.Oban.CommonWorker
+
+      @instance_options instance_options
+
+      @doc false
+      def instance_options, do: @instance_options
+
+      @impl true
+      def requeue(job, opts \\ []) do
+        CommonWorker.requeue(__MODULE__, job, opts)
+      end
+
+      @impl true
+      def insert(params_or_changeset, opts \\ []) do
+        CommonWorker.insert(__MODULE__, params_or_changeset, opts)
+      end
+
+      @impl true
+      def insert_all(params_or_changesets, opts \\ []) do
+        CommonWorker.insert_all(__MODULE__, params_or_changesets, opts)
+      end
+    end
+  end
+
   @doc """
   Injects convenience functions into an Oban worker module for
   integration with the `Cue` API.
@@ -172,7 +219,7 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   To define a worker with an associated Oban instance:
 
       defmodule MyApp.Workers.EmailWorker do
-        use Cue.CommonWorker, instance: MyApp.ObanInstance
+        use Cue.CommonWorker, instance: MyApp.ObanAPI
 
         @impl Oban.Worker
         def perform(%Oban.Job{args: %{"email" => email}}) do
@@ -210,40 +257,10 @@ defmodule Cue.Adapters.Oban.CommonWorker do
 
   """
   defmacro __using__(opts) do
+    ast = Cue.Adapters.Oban.CommonWorker.quoted_adapter_ast(opts)
+
     quote do
-      opts = unquote(opts)
-
-      opts = Cue.Adapters.Oban.CommonWorker.validate_adapter_options!(opts)
-
-      oban_worker_options = Keyword.drop(opts, [:instance, :name])
-
-      instance_options = Keyword.take(opts, [:instance, :name])
-
-      alias Cue.Adapters.Oban.CommonWorker
-
-      use Oban.Worker, oban_worker_options
-
-      @behaviour Cue.Adapters.Oban.CommonWorker
-
-      @instance_options instance_options
-
-      @doc false
-      def __oban__, do: @instance_options
-
-      @impl true
-      def requeue(job, opts \\ []) do
-        CommonWorker.requeue(__MODULE__, job, opts)
-      end
-
-      @impl true
-      def insert(params_or_changeset, opts \\ []) do
-        CommonWorker.insert(__MODULE__, params_or_changeset, opts)
-      end
-
-      @impl true
-      def insert_all(params_or_changesets, opts \\ []) do
-        CommonWorker.insert_all(__MODULE__, params_or_changesets, opts)
-      end
+      unquote(ast)
     end
   end
 end
