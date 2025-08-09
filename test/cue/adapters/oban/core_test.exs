@@ -1,7 +1,7 @@
-defmodule Cue.Adapters.Oban.APITest do
+defmodule Cue.Adapters.Oban.CoreTest do
   use Cue.DataCase
 
-  alias Cue.Adapters.Oban.API
+  alias Cue.Adapters.Oban.Core
 
   @repo Cue.Repo
 
@@ -53,7 +53,7 @@ defmodule Cue.Adapters.Oban.APITest do
       oban_instance = start_oban_instance()
 
       assert {:ok, job} =
-               API.insert(%{name: "job_name"}, worker: MockWorker, name: oban_instance.name)
+               Core.insert(%{name: "job_name"}, worker: MockWorker, name: oban_instance.name)
 
       assert %Oban.Job{args: %{"name" => "job_name"}} = job
     end
@@ -62,7 +62,7 @@ defmodule Cue.Adapters.Oban.APITest do
       start_oban_facade()
 
       assert {:ok, job} =
-               API.insert(%{name: "job_name"}, worker: MockWorker, instance: MockInstance)
+               Core.insert(%{name: "job_name"}, worker: MockWorker, instance: MockInstance)
 
       assert %Oban.Job{args: %{"name" => "job_name"}} = job
     end
@@ -73,7 +73,7 @@ defmodule Cue.Adapters.Oban.APITest do
       oban_instance = start_oban_instance()
 
       assert [job1, job2] =
-               API.insert_all(
+               Core.insert_all(
                  [%{name: "job_name_1"}, %{name: "job_name_2"}],
                  worker: MockWorker,
                  name: oban_instance.name
@@ -87,7 +87,7 @@ defmodule Cue.Adapters.Oban.APITest do
       start_oban_facade()
 
       assert [job1, job2] =
-               API.insert_all(
+               Core.insert_all(
                  [%{name: "job_name_1"}, %{name: "job_name_2"}],
                  worker: MockWorker,
                  instance: MockInstance

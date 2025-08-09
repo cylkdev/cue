@@ -3,11 +3,10 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   alias Cue.Adapters.Oban.Retry
 
   @callback config() :: Cue.Adapters.Oban.CommonWorker.Config.t()
-  @callback perform_job(module(), Oban.Job.t(), function()) ::
+  @callback perform_job(module(), Oban.Job.t()) ::
               {:ok, Oban.Job.t()} | {:error, term()}
-  @callback requeue_job(Oban.Job.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  @callback enqueue_job(any(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  @callback enqueue_jobs(list(any()), keyword()) :: list(Oban.Job.t()) | Ecto.Multi.t()
+  @callback enqueue_job(any()) :: {:ok, Oban.Job.t()} | {:error, term()}
+  @callback enqueue_jobs(list(any())) :: list(Oban.Job.t()) | Ecto.Multi.t()
 
   def config(worker), do: worker.config()
 
@@ -21,6 +20,13 @@ defmodule Cue.Adapters.Oban.CommonWorker do
         |> handle_perform_response(worker, job, config)
 
       policy ->
+        policy =
+          case policy do
+            %Cue.Retry.Policy{} -> policy
+            params when is_map(params) -> params |> Map.to_list() |> Cue.Retry.Policy.new()
+            params -> Cue.Retry.Policy.new(params)
+          end
+
         job
         |> Retry.perform(
           fn job ->
@@ -37,7 +43,12 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   end
 
   defp handle_perform_response({:snooze, delay, reason}, worker, job, config) do
-    case requeue_job(worker, job, delay) do
+    oban_opts =
+      worker
+      |> build_oban_opts()
+      |> put_schedule(delay)
+
+    case Core.insert(job, oban_opts) do
       {:ok, new_job} ->
         if reason do
           {:ok, %{job: new_job, reason: reason}}
@@ -46,8 +57,7 @@ defmodule Cue.Adapters.Oban.CommonWorker do
         end
 
       {:error, error_reason} ->
-        case config.on_requeue_error || :nothing do
-          :raise -> raise RuntimeError, "Failed to requeue job: #{inspect(error_reason)}"
+        case config.on_error || :nothing do
           :cancel -> {:cancel, error_reason}
           :nothing -> {:error, error_reason}
         end
@@ -55,7 +65,11 @@ defmodule Cue.Adapters.Oban.CommonWorker do
   end
 
   defp handle_perform_response({:cancel, reason}, _worker, _job, _config) do
-    {:cancel, reason}
+    {:cancel, %{reason: reason}}
+  end
+
+  defp handle_perform_response({:cancel, :max_attempts_exceeded, reason}, _worker, _job, _config) do
+    {:cancel, %{code: :max_attempts_exceeded, reason: reason}}
   end
 
   defp handle_perform_response(:ok, _worker, _job, _config) do
@@ -72,25 +86,6 @@ defmodule Cue.Adapters.Oban.CommonWorker do
 
   defp handle_perform_response(response, worker, _job, _config) do
     raise RuntimeError, "Invalid response from worker #{inspect(worker)}: #{inspect(response)}"
-  end
-
-  @doc """
-  Re-inserts a job using its current arguments and the configuration from the caller worker.
-
-  This is useful for re-enqueuing the same job manually (e.g. on transient failure).
-  """
-  @spec requeue_job(module(), Oban.Job.t(), DateTime.t() | pos_integer()) ::
-          {:ok, Oban.Job.t()} | {:error, term()}
-  def requeue_job(worker, %Oban.Job{args: args}, delay) do
-    oban_opts = build_oban_opts(worker)
-
-    cond do
-      is_struct(delay, DateTime) -> Keyword.put(oban_opts, :scheduled_at, delay)
-      is_number(delay) -> Keyword.put(oban_opts, :schedule_in, delay)
-      true -> oban_opts
-    end
-
-    Core.insert(args, oban_opts)
   end
 
   @doc """
@@ -128,24 +123,39 @@ defmodule Cue.Adapters.Oban.CommonWorker do
     end
   end
 
+  defp put_schedule(opts, delay) do
+    cond do
+      is_struct(delay, DateTime) -> Keyword.put(opts, :scheduled_at, delay)
+      is_integer(delay) -> Keyword.put(opts, :schedule_in, delay)
+      true -> opts
+    end
+  end
+
   defmacro __using__(opts) do
+    worker_opts =
+      Keyword.take(opts, [
+        :max_attempts,
+        :priority,
+        :queue,
+        :tags,
+        :replace,
+        :unique
+      ])
+
+    other_opts =
+      Keyword.drop(opts, [
+        :max_attempts,
+        :priority,
+        :queue,
+        :tags,
+        :replace,
+        :unique
+      ])
+
     quote do
-      opts = unquote(opts)
+      opts = unquote(other_opts)
 
-      worker_opts =
-        Keyword.take(opts, [
-          :max_attempts,
-          :meta,
-          :priority,
-          :queue,
-          :replace,
-          :schedule_in,
-          :scheduled_at,
-          :tags,
-          :unique
-        ])
-
-      use Oban.Worker, worker_opts
+      use Oban.Worker, unquote(worker_opts)
 
       alias Cue.Adapters.Oban.CommonWorker
 
@@ -155,7 +165,7 @@ defmodule Cue.Adapters.Oban.CommonWorker do
         instance: opts[:instance],
         name: opts[:name],
         retry_policy: opts[:retry_policy],
-        on_requeue_error: opts[:on_requeue_error]
+        on_error: opts[:on_error]
       }
 
       @doc false
@@ -165,11 +175,6 @@ defmodule Cue.Adapters.Oban.CommonWorker do
       @impl true
       def perform(job) do
         CommonWorker.perform_job(__MODULE__, job)
-      end
-
-      @impl true
-      def requeue_job(job) do
-        CommonWorker.requeue_job(__MODULE__, job)
       end
 
       @impl true
