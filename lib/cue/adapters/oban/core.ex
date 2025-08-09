@@ -41,9 +41,9 @@ defmodule Cue.Adapters.Oban.Core do
 
       Cue.insert(%{user_id: 1}, worker: MyApp.Worker)
   """
-  @spec insert(map() | Ecto.Changeset.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  def insert(params_or_changeset, opts) do
-    changeset = build_changeset(params_or_changeset, opts)
+  @spec insert(map() | Ecto.Changeset.t() | Oban.Job.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
+  def insert(input, opts) do
+    changeset = build_changeset(input, opts)
 
     if Keyword.has_key?(opts, :instance) do
       instance = Keyword.fetch!(opts, :instance)
@@ -67,9 +67,9 @@ defmodule Cue.Adapters.Oban.Core do
         oban: [instance: MyApp.Oban]
       )
   """
-  @spec insert_all([map() | Ecto.Changeset.t()], keyword()) :: list(Oban.Job.t()) | Ecto.Multi.t()
-  def insert_all(params_or_changesets, opts) do
-    changesets = build_changesets(params_or_changesets, opts)
+  @spec insert_all([map() | Ecto.Changeset.t() | Oban.Job.t()], keyword()) :: list(Oban.Job.t()) | Ecto.Multi.t()
+  def insert_all(inputs, opts) do
+    changesets = build_changesets(inputs, opts)
 
     if Keyword.has_key?(opts, :instance) do
       instance = Keyword.fetch!(opts, :instance)
@@ -84,6 +84,10 @@ defmodule Cue.Adapters.Oban.Core do
 
   defp build_changesets([_ | _] = entries, opts) do
     Enum.map(entries, &build_changeset(&1, opts))
+  end
+
+  defp build_changeset(%Oban.Job{args: args}, opts) do
+    build_changeset(args, opts)
   end
 
   defp build_changeset(%Ecto.Changeset{} = changeset, _opts), do: changeset

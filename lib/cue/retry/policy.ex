@@ -30,7 +30,7 @@ defmodule Cue.Retry.Policy do
   @definition [
     adapter: [
       required: true,
-      type: :module,
+      type: :atom,
       doc: "The retry strategy module"
     ],
     max_attempts: [
