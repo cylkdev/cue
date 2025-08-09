@@ -1,16 +1,31 @@
-defmodule Cue.Adapters.Oban.API do
-  @oban_job_keys [
-    :max_attempts,
-    :meta,
-    :priority,
-    :queue,
-    :replace,
-    :schedule_in,
-    :scheduled_at,
-    :tags,
-    :unique,
-    :worker
+defmodule Cue.Adapters.Oban.Core do
+  @default_name __MODULE__
+  @default_options [
+    engine: Oban.Engines.Basic,
+    notifier: Oban.Notifiers.PG,
+    peer: Oban.Peers.Global,
+    queues: [default: 10],
+    log: :error,
+    testing: if(Mix.env() === :test, do: :inline, else: :disabled),
+    plugins: [Oban.Plugins.Reindexer]
   ]
+
+  def start_link(opts \\ []) do
+    @default_options
+    |> Keyword.merge(opts)
+    |> Keyword.put_new(:name, @default_name)
+    |> Oban.start_link()
+  end
+
+  @doc false
+  def child_spec(opts) do
+    opts = Keyword.merge(@default_options, opts)
+
+    %{
+      id: opts[:name],
+      start: {__MODULE__, :start_link, [opts]}
+    }
+  end
 
   @doc """
   Inserts a job using the provided parameters or changeset.
@@ -52,8 +67,7 @@ defmodule Cue.Adapters.Oban.API do
         oban: [instance: MyApp.Oban]
       )
   """
-  @spec insert_all([map() | Ecto.Changeset.t()], keyword()) ::
-          {:ok, [Oban.Job.t()]} | {:error, term()}
+  @spec insert_all([map() | Ecto.Changeset.t()], keyword()) :: list(Oban.Job.t()) | Ecto.Multi.t()
   def insert_all(params_or_changesets, opts) do
     changesets = build_changesets(params_or_changesets, opts)
 
@@ -76,7 +90,20 @@ defmodule Cue.Adapters.Oban.API do
 
   defp build_changeset(params, opts) do
     worker = Keyword.fetch!(opts, :worker)
-    worker_opts = Keyword.take(opts, @oban_job_keys)
+
+    worker_opts =
+      Keyword.take(opts, [
+        :max_attempts,
+        :meta,
+        :priority,
+        :queue,
+        :replace,
+        :schedule_in,
+        :scheduled_at,
+        :tags,
+        :unique
+      ])
+
     worker.new(params, worker_opts)
   end
 end

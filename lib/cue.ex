@@ -1,16 +1,16 @@
 defmodule Cue do
   @callback adapter :: module()
-  @callback add_job(any(), keyword()) :: {:ok, any()} | {:error, any()}
-  @callback add_jobs(any(), keyword()) :: {:ok, [any()]} | {:error, any()}
+  @callback enqueue_job(any(), keyword()) :: {:ok, any()} | {:error, any()}
+  @callback enqueue_jobs(any(), keyword()) :: {:ok, [any()]} | {:error, any()}
 
   def adapter(adapter), do: adapter.adapter()
 
-  def add_job(adapter, args, opts) do
-    adapter.add_job(args, opts)
+  def enqueue_job(adapter, args, opts) do
+    adapter.enqueue_job(args, opts)
   end
 
-  def add_jobs(adapter, args, opts) do
-    adapter.add_jobs(args, opts)
+  def enqueue_jobs(adapter, args, opts) do
+    adapter.enqueue_jobs(args, opts)
   end
 
   @adapter_definition [
@@ -24,7 +24,7 @@ defmodule Cue do
     NimbleOptions.validate!(opts, @adapter_definition)
   end
 
-  def quoted_adapter_ast(opts) do
+  def build_ast(opts) do
     quote do
       opts = unquote(opts)
 
@@ -47,7 +47,7 @@ defmodule Cue do
   end
 
   defmacro __using__(opts) do
-    ast = quoted_adapter_ast(opts)
+    ast = build_ast(opts)
 
     quote do
       unquote(ast)

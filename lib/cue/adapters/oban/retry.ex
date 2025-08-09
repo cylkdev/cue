@@ -9,7 +9,7 @@ defmodule Cue.Adapters.Oban.Retry do
 
     * `:ok` — the job was successful and does not require retry.
     * `{:snooze, delay, reason}` — the job will be retried after `delay` seconds.
-    * `{:discard, reason}` — the job should be discarded and not retried again.
+    * `{:cancel, reason}` — the job should be canceled and not retried again.
 
   ## Examples
 
@@ -20,12 +20,10 @@ defmodule Cue.Adapters.Oban.Retry do
   def perform(%Oban.Job{} = job, fun, %Cue.Retry.Policy{} = policy) do
     result = classify(policy, fun.(job))
 
-    with true <- retry?(result, job, policy) do
+    if retry?(result, job, policy) do
       {:snooze, backoff(policy, job), extract_reason(result)}
     else
-      :ok -> :ok
-      false -> {:discard, :max_attempts_exceeded}
-      {:error, reason} -> {:discard, reason}
+      {:cancel, :max_attempts_exceeded, result}
     end
   end
 
@@ -45,5 +43,5 @@ defmodule Cue.Adapters.Oban.Retry do
   defp retry?(:ok, _, _), do: false
 
   defp extract_reason({:error, reason}), do: reason
-  defp extract_reason(:ok), do: nil
+  defp extract_reason(_), do: nil
 end

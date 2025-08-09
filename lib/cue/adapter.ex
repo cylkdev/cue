@@ -7,6 +7,6 @@ defmodule Cue.Adapter do
   @type args :: any()
   @type options :: keyword()
 
-  @callback add_job(args(), options()) :: {:ok, any()} | {:error, any()}
-  @callback add_jobs(args(), options()) :: {:ok, [any()]} | {:error, any()}
+  @callback enqueue_job(args(), options()) :: {:ok, any()} | {:error, any()}
+  @callback enqueue_jobs(args(), options()) :: list(any()) | any()
 end

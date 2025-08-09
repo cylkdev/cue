@@ -1,21 +1,22 @@
 defmodule Cue.Adapters.Oban do
+  alias Cue.Adapters.Oban.Core
+
   @behaviour Cue.Adapter
 
-  alias Cue.Adapters.Oban
-
-  def start_link(name, opts \\ []) do
-    Oban.Supervisor.start_link(name, opts)
+  def start_link(opts \\ []) do
+    Core.start_link(opts)
   end
 
-  def child_spec(args) do
-    Oban.Supervisor.child_spec(args)
+  @doc false
+  def child_spec(opts) do
+    Core.child_spec(opts)
   end
 
-  def add_job(params_or_changeset, opts \\ []) do
-    Oban.API.insert(params_or_changeset, opts)
+  def enqueue_job(params_or_changeset, opts) do
+    Core.insert(params_or_changeset, opts)
   end
 
-  def add_jobs(params_or_changesets, opts \\ []) do
-    Oban.API.insert_all(params_or_changesets, opts)
+  def enqueue_jobs(params_or_changesets, opts) do
+    Core.insert_all(params_or_changesets, opts)
   end
 end
