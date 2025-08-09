@@ -91,7 +91,12 @@ defmodule Cue.Adapters.Oban.Core do
   defp build_changeset(params, opts) do
     worker = Keyword.fetch!(opts, :worker)
 
-    worker_opts =
+    worker.new(params, build_worker_opts(opts, worker))
+  end
+
+  defp build_worker_opts(opts, worker) do
+    merge_worker_opts(
+      worker.__opts__(),
       Keyword.take(opts, [
         :max_attempts,
         :meta,
@@ -103,7 +108,16 @@ defmodule Cue.Adapters.Oban.Core do
         :tags,
         :unique
       ])
+    )
+  end
 
-    worker.new(params, worker_opts)
+  defp merge_worker_opts(base_opts, opts) do
+    Keyword.merge(base_opts, opts, fn
+      :unique, [_ | _] = opts_1, [_ | _] = opts_2 ->
+        Keyword.merge(opts_1, opts_2)
+
+      _key, _opts, opts_2 ->
+        opts_2
+    end)
   end
 end

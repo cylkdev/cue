@@ -132,9 +132,20 @@ defmodule Cue.Adapters.Oban.CommonWorker do
     quote do
       opts = unquote(opts)
 
-      oban_worker_options = Keyword.drop(opts, [:instance, :name, :retry_policy])
+      worker_opts =
+        Keyword.take(opts, [
+          :max_attempts,
+          :meta,
+          :priority,
+          :queue,
+          :replace,
+          :schedule_in,
+          :scheduled_at,
+          :tags,
+          :unique
+        ])
 
-      use Oban.Worker, oban_worker_options
+      use Oban.Worker, worker_opts
 
       alias Cue.Adapters.Oban.CommonWorker
 
