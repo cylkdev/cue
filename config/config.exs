@@ -1,9 +1,9 @@
 import Config
 
-config :cue, ecto_repos: [Cue.Repo]
+config :cue, ecto_repos: [Cue.Support.Repo]
 
 if Mix.env() === :test do
-  config :cue, Cue.Repo,
+  config :cue, Cue.Support.Repo,
     database: "cue_test",
     username: "postgres",
     password: "postgres",

@@ -15,8 +15,7 @@ defmodule Cue.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
-      mod: {Cue.Application, []}
+      extra_applications: [:logger]
     ]
   end
 
@@ -28,8 +27,6 @@ defmodule Cue.MixProject do
   defp deps do
     [
       {:nimble_options, ">= 0.0.0"},
-      {:error_message, ">= 0.0.0", optional: true},
-      {:jason, ">= 0.0.0", optional: true},
       {:oban, ">= 0.0.0", optional: true},
       {:ecto, ">= 0.0.0", optional: true},
       {:ecto_sql, ">= 0.0.0", optional: true},

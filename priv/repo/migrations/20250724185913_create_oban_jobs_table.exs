@@ -1,4 +1,4 @@
-defmodule Cue.Repo.Migrations.CreateObanJobsTable do
+defmodule Cue.Support.Repo.Migrations.CreateObanJobsTable do
   use Ecto.Migration
 
   def up, do: Oban.Migrations.up()

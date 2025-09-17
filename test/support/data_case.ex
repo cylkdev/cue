@@ -1,16 +1,16 @@
-defmodule Cue.DataCase do
+defmodule Cue.Support.DataCase do
   use ExUnit.CaseTemplate
 
   using do
     quote do
-      alias Cue.Repo
+      alias Cue.Support.Repo
 
-      use Oban.Testing, repo: Cue.Repo
+      use Oban.Testing, repo: Cue.Support.Repo
 
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
-      import Cue.DataCase
+      import Cue.Support.DataCase
     end
   end
 
@@ -20,10 +20,10 @@ defmodule Cue.DataCase do
   end
 
   def setup_sandbox(tags) do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Cue.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Cue.Support.Repo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Cue.Repo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(Cue.Support.Repo, {:shared, self()})
     end
   end
 
