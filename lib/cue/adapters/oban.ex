@@ -1,32 +1,100 @@
-defmodule Cue.Oban do
-  @behaviour Cue.Director
+defmodule Cue.Adapters.Oban do
+  @moduledoc """
+  # Cue.Oban
+
+  `Cue.Oban` provides a standardized API for enqueuing jobs using Oban.
+  This removes the need for boilerplate by providing custom wrapper
+  functions and keeps call sites consistent and readable.
+  """
+  @behaviour Cue.Adapter
 
   @default_name __MODULE__
-  @testing if(Mix.env() === :test, do: :inline, else: :disabled)
+  @default_repo if(Mix.env() === :test, do: Cue.Support.Repo)
+  @default_testing if(Mix.env() === :test, do: :inline, else: :disabled)
+  @default_queues [default: 10]
   @default_options [
     engine: Oban.Engines.Basic,
     notifier: Oban.Notifiers.PG,
     peer: Oban.Peers.Global,
-    repo: Cue.Support.Repo,
-    queues: [default: 5],
+    repo: @default_repo,
+    queues: @default_queues,
     log: :error,
-    testing: @testing,
-    plugins: [Oban.Plugins.Reindexer]
+    testing: @default_testing,
+    plugins: []
   ]
 
+  @definition [
+    name: [
+      type: :atom,
+      default: @default_name,
+      doc:
+        "The name used for the Oban supervisor registration, it must be unique across an entire VM instance."
+    ],
+    node: [
+      type: :any,
+      doc: "Node identifier used for multi-node coordination."
+    ],
+    engine: [
+      type: :any,
+      default: Oban.Engines.Basic,
+      doc: "The Oban engine module to use for job execution."
+    ],
+    notifier: [
+      type: :any,
+      default: Oban.Notifiers.PG,
+      doc: "The notifier module responsible for pub/sub notifications."
+    ],
+    peer: [
+      type: :any,
+      default: Oban.Peers.Global,
+      doc: "The peer module that coordinates leadership across nodes."
+    ],
+    repo: [
+      type: :any,
+      required: true,
+      doc: "The Ecto repo module used for database interactions."
+    ],
+    queues: [
+      type: :any,
+      default: @default_queues,
+      doc: "Keyword list mapping queue names to concurrency values, e.g. `[default: 10]`."
+    ],
+    log: [
+      type: :any,
+      default: :error,
+      doc: "Log level for Oban internal events."
+    ],
+    testing: [
+      type: :any,
+      doc: "Mode for testing: `:inline` executes jobs immediately, `:disabled` ignores jobs."
+    ],
+    plugins: [
+      type: :any,
+      default: [],
+      doc: "List of Oban plugins to load, e.g. `[Oban.Plugins.Pruner]`."
+    ],
+    prefix: [
+      type: :any,
+      doc: "The query prefix, or schema, to use for inserting and executing jobs."
+    ]
+  ]
+
+  @doc false
+  def definition, do: @definition
+
   @doc """
-  Cue.Oban.start_link()
+  Cue.Adapters.Oban.start_link()
   """
   def start_link(opts \\ []) do
     @default_options
+    |> Keyword.merge(Cue.Config.get_app_env(:oban, []))
     |> Keyword.merge(opts)
     |> Keyword.put_new(:name, @default_name)
+    |> NimbleOptions.validate!(@definition)
     |> Oban.start_link()
   end
 
   def child_spec(opts \\ []) do
-    opts = Keyword.merge(@default_options, opts)
-
     %{
       id: {__MODULE__, opts[:id] || opts[:name] || opts[:key] || :default},
       start: {__MODULE__, :start_link, [opts]},
@@ -34,10 +102,6 @@ defmodule Cue.Oban do
       shutdown: Keyword.get(opts, :shutdown, 5_000),
       type: :worker
     }
-  end
-
-  def supervisor_child_spec(opts) do
-    {__MODULE__, opts[:oban] || []}
   end
 
   @impl true
@@ -77,9 +141,16 @@ defmodule Cue.Oban do
 
   Supports the same `:oban` options as `Oban.insert_all/3`.
   """
-  @spec add_jobs([map() | Ecto.Changeset.t() | Oban.Job.t()], keyword()) ::
+  @spec add_jobs(
+          map()
+          | Ecto.Changeset.t()
+          | Oban.Job.t()
+          | list(map() | Ecto.Changeset.t() | Oban.Job.t()),
+          keyword()
+        ) ::
           list(Oban.Job.t()) | Ecto.Multi.t()
-  def add_jobs(params_list, opts) do
+  def add_jobs(params, opts) do
+    params_list = List.wrap(params)
     changesets = to_changeset(params_list, opts)
 
     case opts[:oban][:instance] do

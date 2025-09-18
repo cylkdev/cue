@@ -4,10 +4,10 @@ defmodule CueTest do
 
   defmodule MockMaestro do
     use Cue,
-      adapter: Cue.Oban,
-      director: {Cue.Oban.Instance, name: :mock_instance},
+      adapter: Cue.Adapters.Oban,
+      director: {Cue.Adapters.Oban.Instance, name: :mock_instance},
       retry_policy: %{
-        adapter: Cue.Oban.Retry.Strategies.Linear,
+        adapter: Cue.Adapters.Oban.Retry.Strategies.Linear,
         max_attempts: 20,
         min_attempts: 0
       }
@@ -19,7 +19,9 @@ defmodule CueTest do
 
   def start_oban_facade do
     pid =
-      start_supervised!({Cue.Oban.Instance, repo: @repo, queues: [default: 10], testing: :inline})
+      start_supervised!(
+        {Cue.Adapters.Oban.Instance, repo: @repo, queues: [default: 10], testing: :inline}
+      )
 
     %{pid: pid}
   end
@@ -27,9 +29,9 @@ defmodule CueTest do
   describe "config/0" do
     test "" do
       assert %Cue.Config{
-               director: {Cue.Oban.Instance, :mock_instance},
+               director: {Cue.Adapters.Oban.Instance, :mock_instance},
                retry_policy: %{
-                 adapter: Cue.Oban.Retry.Strategies.Linear,
+                 adapter: Cue.Adapters.Oban.Retry.Strategies.Linear,
                  max_attempts: 20,
                  min_attempts: 0
                }

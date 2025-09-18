@@ -1,128 +1,92 @@
 defmodule Cue do
   @moduledoc ~S"""
-  `Cue`
+  You can start the adapters directly:
 
-  # Installation
+      Cue.start_link([{Cue.Adapters.Oban, name: ObanA}])
 
-  Open your mix.exs and add the following to the deps/0 function:
+  You can also add it to your supervision tree:
 
-      {:cue, "~> 0.1"}
+      def init(_) do
+        children = [
+          {Cue, schedulers: [Cue.Adapters.Oban]}
+        ]
 
-  # Usage
+        Supervisor.init(children, strategy: :one_for_one)
+      end
 
-  Before we jump into workers and jobs, let’s get the foundations in place.
-
-  ## Step 1: Start your Repo
-
-  Most examples assume you already have a Repo configured.
-  For our walkthrough, let’s start the bundled support repo:
-
-      Cue.Support.Repo.start_link()
-
-  This makes sure we have a database connection ready for Oban.
-
-  ## Step 2: Define a Worker
-
-  Workers are where the “real work” happens. Let’s create a
-  simple one that prints greetings:
+  Once you've setup your scheduler you can now call the scheduler functions,
+  for example:
 
       defmodule Greeter do
-        use Cue.Act,
-          actor: Cue.Oban.Performer,
-          director: Cue.Oban,
-          oban: [name: Greeter.Oban],
-          params: %{event: "greeting"},
-          max_attempts: 3,
-          options: []
+        use Oban.Worker
 
         @impl true
-        def handle_perform(
-          %Oban.Job{
-            args: %{
-              "event" => "greeting",
-              "name" => name,
-              "message" => message
-            }
-          },
-          _config
-        ) do
+        def  perform(%Oban.Job{args: %{"name" => name, "message" => message}}) do
           IO.puts("#{message}, #{name}.")
           :ok
         end
       end
 
-  Let’s unpack this a bit:
-
-    - `use Cue.Act`: Brings in the necessary glue so your
-      worker is recognized by Cue and integrated with Oban
-      This sets up the scheduling and execution behaviour
-      automatically.
-
-    - `params`: A field specific to `Cue.Oban.Performer`. It
-      defines default parameters that are merged into every
-      worker call (e.g. `add_job/2` or `add_jobs/2`). This is
-      useful when you want each job to always carry a certain
-      key (for example, "event" => "greeting") without having
-      to pass it every time.
-
-    - `max_attempts: 3`: An option from `Oban.Worker`. Cue
-      forwards any options it doesn’t use directly to the
-      underlying adapter, so standard Oban options like
-      `:max_attempts`, `:queue`, or `:priority` work as
-      expected.
-
-    - `handle_perform/2`: The required callback for all workers
-      using `Cue.Oban.Performer`. It receives the `%Oban.Job{}`
-      struct and your worker’s config. This is where you
-      implement the actual logic-what the job does when it runs.
-
-  ## Step 3: Start Oban
-
-  In our worker definition we passed `oban: [name: Greeter.Oban]`.
-  That means we need to start an Oban instance with the same name:
-
-      Cue.Oban.start_link(name: Greeter.Oban)
-
-  At this point:
-
-    - The Repo is running.
-    - The Oban instance is running.
-    - Our worker module is defined.
-
-  We’re ready to enqueue a job!
-
-  ## Step 4: Add a Job
-
-  Now let’s queue up a greeting for our worker:
-
-      Greeter.add_job(%{"message" => "Hello", "name" => "John"})
-
-  Once this job is picked up, Oban will pass the args into `handle_perform/2`, and you’ll see:
-
-      Hello, John.
-
-  ## Step 5: Starting Everything Together
-
-  Manually starting the repo, Oban, and workers works fine-but
-  for convenience you can start your **director and actor
-  together** in one call:
-
-      Cue.start_link(stage: [{Greeter, [oban: [name: Greeter.Oban]]}])
-
-  This ensures all the moving parts-repo, Oban instance, director,
-  and workers-boot up in the right order with a single call.
-
-  From here, you can experiment by adding more workers, tweaking
-  retry strategies, and composing more complex job orchestration.
+  Cue.add_job(%{name: "Alice", message: "Hello"}, oban: [name: ObanA, worker: Greeter])
+  Cue.add_jobs([%{name: "Alice", message: "Hello"}], oban: [name: ObanA, worker: Greeter])
   """
+  use Supervisor
 
-  alias Cue.Supervisor
+  @default_scheduler Cue.Adapters.Oban
+  @default_name __MODULE__
 
-  def start_link(opts \\ []) do
-    Supervisor.start_link(opts)
+  def start_link(schedulers, opts \\ []) do
+    Supervisor.start_link(__MODULE__, schedulers, Keyword.put_new(opts, :name, @default_name))
   end
 
-  def child_spec(opts \\ []) do
-    Supervisor.child_spec(opts)
+  def child_spec({schedulers, child_opts, start_opts}) do
+    Supervisor.child_spec({__MODULE__, [schedulers, start_opts]}, child_opts)
+  end
+
+  def child_spec({schedulers, opts}) do
+    child_opts = Keyword.get(opts, :supervisor, [])
+    start_opts = Keyword.drop(opts, [:schedulers, :supervisor])
+
+    child_spec({schedulers, child_opts, start_opts})
+  end
+
+  def child_spec(opts) do
+    schedulers = Keyword.get(opts, :schedulers, [])
+    child_opts = Keyword.get(opts, :supervisor, [])
+    start_opts = Keyword.drop(opts, [:schedulers, :supervisor])
+
+    child_spec({schedulers, child_opts, start_opts})
+  end
+
+  @impl true
+  def init(schedulers) do
+    schedulers
+    |> Kernel.++(Cue.Config.schedulers())
+    |> List.flatten()
+    |> Enum.map(fn
+      {module, args, opts} ->
+        Supervisor.child_spec({module, args}, opts)
+
+      {module, args} ->
+        Supervisor.child_spec({module, args}, [])
+
+      module ->
+        Supervisor.child_spec(module, [])
+    end)
+    |> Enum.reduce(MapSet.new(), fn entry, set -> MapSet.put(set, entry) end)
+    |> MapSet.to_list()
+    |> Supervisor.init(strategy: :one_for_one)
+  end
+
+  def add_job(params, opts \\ []) do
+    scheduler(opts).add_job(params, opts)
+  end
+
+  def add_jobs(params, opts \\ []) do
+    scheduler(opts).add_jobs(params, opts)
+  end
+
+  defp scheduler(opts) do
+    opts[:scheduler] || @default_scheduler
   end
 end
