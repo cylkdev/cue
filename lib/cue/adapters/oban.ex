@@ -122,12 +122,7 @@ defmodule Cue.Adapters.Oban do
 
     case opts[:oban][:instance] do
       nil ->
-        name = opts[:oban][:name]
-
-        if name === nil do
-          raise "oban option :name is required, got: #{inspect(opts)}"
-        end
-
+        name = opts[:oban][:name] || @default_name
         Oban.insert(name, changeset, opts)
 
       instance ->
@@ -155,12 +150,7 @@ defmodule Cue.Adapters.Oban do
 
     case opts[:oban][:instance] do
       nil ->
-        name = opts[:oban][:name]
-
-        if name === nil do
-          raise "oban option :name is required, got: #{inspect(opts)}"
-        end
-
+        name = opts[:oban][:name] || @default_name
         Oban.insert_all(name, changesets, opts)
 
       instance ->
