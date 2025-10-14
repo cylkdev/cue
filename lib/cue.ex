@@ -2,13 +2,13 @@ defmodule Cue do
   @moduledoc ~S"""
   You can start the adapters directly:
 
-      Cue.start_link([{Cue.Adapters.Oban, name: ObanA}])
+      Cue.start_link([Cue.Adapters.Oban])
 
   You can also add it to your supervision tree:
 
       def init(_) do
         children = [
-          {Cue, schedulers: [Cue.Adapters.Oban]}
+          {Cue, [Cue.Adapters.Oban]}
         ]
 
         Supervisor.init(children, strategy: :one_for_one)
@@ -32,43 +32,42 @@ defmodule Cue do
   """
   use Supervisor
 
-  @default_scheduler Cue.Adapters.Oban
+  @default_adapter Cue.Adapters.Oban
   @default_name __MODULE__
 
-  def start_link(schedulers, opts \\ []) do
-    Supervisor.start_link(__MODULE__, schedulers, Keyword.put_new(opts, :name, @default_name))
+  def start_link(adapters \\ [@default_adapter], opts \\ []) do
+    Supervisor.start_link(__MODULE__, adapters, Keyword.put_new(opts, :name, @default_name))
   end
 
-  def child_spec({schedulers, child_opts, start_opts}) do
-    Supervisor.child_spec({__MODULE__, [schedulers, start_opts]}, child_opts)
+  def child_spec({adapters, start_opts, sup_opts}) do
+    %{
+      id: {__MODULE__, start_opts[:id] || start_opts[:name] || start_opts[:key] || :default},
+      start: {__MODULE__, :start_link, [adapters, start_opts]},
+      type: :supervisor,
+      restart: Keyword.get(sup_opts, :restart, :permanent),
+      shutdown: Keyword.get(sup_opts, :shutdown, 5_000)
+    }
   end
 
-  def child_spec({schedulers, opts}) do
-    child_opts = Keyword.get(opts, :supervisor, [])
-    start_opts = Keyword.drop(opts, [:schedulers, :supervisor])
-
-    child_spec({schedulers, child_opts, start_opts})
+  def child_spec({adapters, start_opts}) do
+    child_spec({adapters, start_opts, []})
   end
 
-  def child_spec(opts) do
-    schedulers = Keyword.get(opts, :schedulers, [])
-    child_opts = Keyword.get(opts, :supervisor, [])
-    start_opts = Keyword.drop(opts, [:schedulers, :supervisor])
-
-    child_spec({schedulers, child_opts, start_opts})
+  def child_spec(adapters) do
+    child_spec({adapters, [], []})
   end
 
   @impl true
-  def init(schedulers) do
-    schedulers
-    |> Kernel.++(Cue.Config.schedulers())
+  def init(adapters) do
+    adapters
+    |> Kernel.++(Cue.Config.adapters())
     |> List.flatten()
     |> Enum.map(fn
-      {module, args, opts} ->
-        Supervisor.child_spec({module, args}, opts)
+      {module, child_spec_args, opts} ->
+        Supervisor.child_spec({module, child_spec_args}, opts)
 
-      {module, args} ->
-        Supervisor.child_spec({module, args}, [])
+      {module, child_spec_args} ->
+        Supervisor.child_spec({module, child_spec_args}, [])
 
       module ->
         Supervisor.child_spec(module, [])
@@ -87,6 +86,6 @@ defmodule Cue do
   end
 
   defp scheduler(opts) do
-    opts[:scheduler] || @default_scheduler
+    opts[:scheduler] || @default_adapter
   end
 end

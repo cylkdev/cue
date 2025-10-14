@@ -3,5 +3,5 @@ defmodule Cue.Config do
   @app :cue
 
   def get_app_env(key, default), do: Application.get_env(@app, key) || default
-  def schedulers, do: Application.get_env(@app, :schedulers) || []
+  def adapters, do: Application.get_env(@app, :adapters) || []
 end
