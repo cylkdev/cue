@@ -120,7 +120,7 @@ defmodule Cue.Adapters.Oban do
   def add_job(params, opts) do
     changeset = to_changeset(params, opts)
 
-    case opts[:oban][:instance] do
+    case opts[:oban][:module] do
       nil ->
         name = opts[:oban][:name] || @default_name
         Oban.insert(name, changeset, opts)
@@ -148,7 +148,7 @@ defmodule Cue.Adapters.Oban do
     params_list = List.wrap(params)
     changesets = to_changeset(params_list, opts)
 
-    case opts[:oban][:instance] do
+    case opts[:oban][:module] do
       nil ->
         name = opts[:oban][:name] || @default_name
         Oban.insert_all(name, changesets, opts)
