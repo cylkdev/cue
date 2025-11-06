@@ -8,6 +8,7 @@ defmodule Cue.MixProject do
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps()
     ]
   end
@@ -15,7 +16,8 @@ defmodule Cue.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {Cue.Application, []}
     ]
   end
 
@@ -26,11 +28,21 @@ defmodule Cue.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:jason, "~> 1.0"},
       {:nimble_options, ">= 0.0.0"},
       {:oban, ">= 0.0.0", optional: true},
       {:ecto, ">= 0.0.0", optional: true},
       {:ecto_sql, ">= 0.0.0", optional: true},
       {:postgrex, ">= 0.0.0", optional: true}
+    ]
+  end
+
+  defp aliases do
+    [
+      setup: ["deps.get", "ecto.setup"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "ecto.seed"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.seed": ["run priv/repo/seeds.exs"]
     ]
   end
 end

@@ -9,24 +9,18 @@ defmodule Cue.Adapters.Oban do
   @behaviour Cue.Adapter
 
   @default_name __MODULE__
-  @default_repo if(Mix.env() === :test, do: Cue.Support.Repo)
-  @default_testing if(Mix.env() === :test, do: :inline, else: :disabled)
-  @default_queues [default: 10]
+
   @default_options [
-    engine: Oban.Engines.Basic,
-    notifier: Oban.Notifiers.PG,
-    peer: Oban.Peers.Global,
-    repo: @default_repo,
-    queues: @default_queues,
-    log: :error,
-    testing: @default_testing,
+    name: @default_name,
+    repo: Cue.Repo,
+    queues: [default: 5],
     plugins: []
   ]
 
   @definition [
     name: [
       type: :atom,
-      default: @default_name,
+      required: true,
       doc:
         "The name used for the Oban supervisor registration, it must be unique across an entire VM instance."
     ],
@@ -35,46 +29,43 @@ defmodule Cue.Adapters.Oban do
       doc: "Node identifier used for multi-node coordination."
     ],
     engine: [
-      type: :any,
+      type: :atom,
       default: Oban.Engines.Basic,
       doc: "The Oban engine module to use for job execution."
     ],
     notifier: [
-      type: :any,
+      type: :atom,
       default: Oban.Notifiers.PG,
       doc: "The notifier module responsible for pub/sub notifications."
     ],
     peer: [
-      type: :any,
+      type: :atom,
       default: Oban.Peers.Global,
       doc: "The peer module that coordinates leadership across nodes."
     ],
     repo: [
-      type: :any,
+      type: :atom,
       required: true,
       doc: "The Ecto repo module used for database interactions."
     ],
     queues: [
-      type: :any,
-      default: @default_queues,
+      type: :keyword_list,
       doc: "Keyword list mapping queue names to concurrency values, e.g. `[default: 10]`."
     ],
     log: [
-      type: :any,
-      default: :error,
+      type: :atom,
       doc: "Log level for Oban internal events."
     ],
     testing: [
-      type: :any,
+      type: :atom,
       doc: "Mode for testing: `:inline` executes jobs immediately, `:disabled` ignores jobs."
     ],
     plugins: [
-      type: :any,
-      default: [],
+      type: :keyword_list,
       doc: "List of Oban plugins to load, e.g. `[Oban.Plugins.Pruner]`."
     ],
     prefix: [
-      type: :any,
+      type: :string,
       doc: "The query prefix, or schema, to use for inserting and executing jobs."
     ]
   ]
@@ -85,23 +76,76 @@ defmodule Cue.Adapters.Oban do
   @doc """
   Cue.Adapters.Oban.start_link()
   """
-  def start_link(opts \\ []) do
+  def start_link(name \\ @default_name, opts \\ []) do
+    oban_config = Cue.Config.get_env(__MODULE__) || Cue.Config.get_env(Oban) || []
+
     @default_options
-    |> Keyword.merge(Cue.Config.get_app_env(:oban, []))
+    |> Keyword.merge(oban_config)
     |> Keyword.merge(opts)
-    |> Keyword.put_new(:name, @default_name)
+    |> Keyword.put_new(:name, name)
     |> NimbleOptions.validate!(@definition)
+    |> dbg()
     |> Oban.start_link()
   end
 
-  def child_spec(opts \\ []) do
+  def child_spec({name, opts}) do
     %{
-      id: {__MODULE__, opts[:id] || opts[:name] || opts[:key] || :default},
-      start: {__MODULE__, :start_link, [opts]},
+      id: child_id(name),
+      start: {__MODULE__, :start_link, [name, opts]},
       restart: Keyword.get(opts, :restart, :permanent),
       shutdown: Keyword.get(opts, :shutdown, 5_000),
       type: :worker
     }
+  end
+
+  def child_spec(opts) do
+    opts
+    |> Keyword.pop(:name, @default_name)
+    |> child_spec()
+  end
+
+  defp child_id(__MODULE__), do: @default_name
+  defp child_id(name), do: {__MODULE__, name}
+
+  @impl true
+  @doc """
+  Cue.Adapters.Oban.schedule_job()
+  """
+  def schedule_job(
+        %Oban.Job{args: args, worker: worker} = _job,
+        params,
+        delay_sec_or_datetime,
+        opts
+      ) do
+    worker = string_to_module(worker)
+
+    args
+    |> Map.merge(params)
+    |> worker.new(Keyword.merge(opts[:worker] || [], oban_schedule_opt(delay_sec_or_datetime)))
+    |> Oban.insert(opts)
+  end
+
+  def schedule_job(worker, params, delay_sec_or_datetime, opts) do
+    params
+    |> worker.new(Keyword.merge(opts[:worker] || [], oban_schedule_opt(delay_sec_or_datetime)))
+    |> Oban.insert(opts)
+  end
+
+  defp oban_schedule_opt(delay_sec_seconds)
+       when is_integer(delay_sec_seconds) and delay_sec_seconds > 0 do
+    [schedule_in: delay_sec_seconds]
+  end
+
+  defp oban_schedule_opt(%DateTime{} = datetime) do
+    [schedule_at: datetime]
+  end
+
+  defp string_to_module(string) when is_binary(string) do
+    string |> String.split(".", trim: true) |> Module.safe_concat()
+  end
+
+  defp string_to_module(term) do
+    term
   end
 
   @impl true
